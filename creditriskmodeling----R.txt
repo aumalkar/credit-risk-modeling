@@ -1,0 +1,356 @@
+
+Credit Risk Modelling [EDA & Classification]
+IonasKel
+September 30, 2018
+
+    Introduction
+    Load data and Libraries
+    Feature Selection & Engineering
+    Exploratory Data Analysis
+    Data modelling
+    Conclusion
+
+Introduction
+
+The analysis of credit risk and the decision making for granting loans is one of the most important operations for financial institutions. By taking into account past results, we need to train a model to accurately predict future outcomes.
+Load data and Libraries
+
+Load libraries we are going to use.
+
+library(tidyverse)
+library(ggthemes)
+library(corrplot)
+library(GGally)
+library(DT)
+library(caret)
+
+Load the data available for analysis. The dataset is takenas bank’s records about the statuw of loan defaults and the profile of customers.
+
+# Set the blank spaces to NA's
+loan = read_csv("../input/loan.csv" , na = "")
+
+colnames(loan)
+
+##  [1] "id"                          "member_id"                  
+##  [3] "loan_amnt"                   "funded_amnt"                
+##  [5] "funded_amnt_inv"             "term"                       
+##  [7] "int_rate"                    "installment"                
+##  [9] "grade"                       "sub_grade"                  
+## [11] "emp_title"                   "emp_length"                 
+## [13] "home_ownership"              "annual_inc"                 
+## [15] "verification_status"         "issue_d"                    
+## [17] "loan_status"                 "pymnt_plan"                 
+## [19] "url"                         "desc"                       
+## [21] "purpose"                     "title"                      
+## [23] "zip_code"                    "addr_state"                 
+## [25] "dti"                         "delinq_2yrs"                
+## [27] "earliest_cr_line"            "inq_last_6mths"             
+## [29] "mths_since_last_delinq"      "mths_since_last_record"     
+## [31] "open_acc"                    "pub_rec"                    
+## [33] "revol_bal"                   "revol_util"                 
+## [35] "total_acc"                   "initial_list_status"        
+## [37] "out_prncp"                   "out_prncp_inv"              
+## [39] "total_pymnt"                 "total_pymnt_inv"            
+## [41] "total_rec_prncp"             "total_rec_int"              
+## [43] "total_rec_late_fee"          "recoveries"                 
+## [45] "collection_recovery_fee"     "last_pymnt_d"               
+## [47] "last_pymnt_amnt"             "next_pymnt_d"               
+## [49] "last_credit_pull_d"          "collections_12_mths_ex_med" 
+## [51] "mths_since_last_major_derog" "policy_code"                
+## [53] "application_type"            "annual_inc_joint"           
+## [55] "dti_joint"                   "verification_status_joint"  
+## [57] "acc_now_delinq"              "tot_coll_amt"               
+## [59] "tot_cur_bal"                 "open_acc_6m"                
+## [61] "open_il_6m"                  "open_il_12m"                
+## [63] "open_il_24m"                 "mths_since_rcnt_il"         
+## [65] "total_bal_il"                "il_util"                    
+## [67] "open_rv_12m"                 "open_rv_24m"                
+## [69] "max_bal_bc"                  "all_util"                   
+## [71] "total_rev_hi_lim"            "inq_fi"                     
+## [73] "total_cu_tl"                 "inq_last_12m"
+
+Feature Selection & Engineering
+
+The dataset contains of information of age, annual income, grade of employee, home ownership that affect the probability of default of the borrower. The columns we are going to use are namely:
+
+    loan_status : Variable with multiple levels (e.g. Charged off, Current, Default, Fully Paid …)
+    loan_amnt : Total amount of loan taken
+    int_rate : Loan interset rate
+    grade : Grade of employment
+    emp_length : Duration of employment
+    home_ownership : Type of ownership of house
+    annual_inc : Total annual income
+    term : 36-month or 60-month period
+
+# Select only the columns mentioned above.
+loan = loan %>%
+        select(loan_status , loan_amnt , int_rate , grade , emp_length , home_ownership , 
+               annual_inc , term)
+loan
+
+## # A tibble: 887,379 x 8
+##    loan_status loan_amnt int_rate grade emp_length home_ownership
+##    <chr>           <dbl>    <dbl> <chr> <chr>      <chr>         
+##  1 Fully Paid       5000     10.6 B     10+ years  RENT          
+##  2 Charged Off      2500     15.3 C     < 1 year   RENT          
+##  3 Fully Paid       2400     16.0 C     10+ years  RENT          
+##  4 Fully Paid      10000     13.5 C     10+ years  RENT          
+##  5 Current          3000     12.7 B     1 year     RENT          
+##  6 Fully Paid       5000      7.9 A     3 years    RENT          
+##  7 Current          7000     16.0 C     8 years    RENT          
+##  8 Fully Paid       3000     18.6 E     9 years    RENT          
+##  9 Charged Off      5600     21.3 F     4 years    OWN           
+## 10 Charged Off      5375     12.7 B     < 1 year   RENT          
+## # ... with 887,369 more rows, and 2 more variables: annual_inc <dbl>,
+## #   term <chr>
+
+Missing Values:
+
+sapply(loan , function(x) sum(is.na(x)))
+
+##    loan_status      loan_amnt       int_rate          grade     emp_length 
+##              0              0              0              0              0 
+## home_ownership     annual_inc           term 
+##              0              4              0
+
+# Remove the 4 rows with missing annual income, 49 rows where home ownership is 'NONE' or 'ANY' and rows where emp_length is 'n/a'.
+
+loan = loan %>%
+        filter(!is.na(annual_inc) , 
+               !(home_ownership %in% c('NONE' , 'ANY')) , 
+               emp_length != 'n/a')
+
+Exploratory Data Analysis
+
+    loan_status :
+
+loan %>%
+        count(loan_status) %>%
+        ggplot(aes(x = reorder(loan_status , desc(n)) , y = n , fill = n)) + 
+        geom_col() + 
+        coord_flip() + 
+        labs(x = 'Loan Status' , y = 'Count')
+
+We want to convert this variable to binary (1 for default and 0 for non-default) but we have 10 different levels. Loans with status Current, Late payments, In grace period need to be removed. Therefore, we create a new variable called loan_outcome where
+
+loan_outcome -> 1 if loan_status = ‘Charged Off’ or ‘Default’ loan_outcome -> 0 if loan_status = ‘Fully Paid’
+
+loan = loan %>%
+        mutate(loan_outcome = ifelse(loan_status %in% c('Charged Off' , 'Default') , 
+                                     1, 
+                                     ifelse(loan_status == 'Fully Paid' , 0 , 'No info')
+                                     ))
+
+barplot(table(loan$loan_outcome) , col = 'lightblue')
+
+We will create a new dataset which contains only rows with 0 or 1 in loan_outcome feature for better modelling.
+
+# Create the new dataset by filtering 0's and 1's in the loan_outcome column and remove loan_status column for the modelling
+loan2 = loan %>%
+        select(-loan_status) %>%
+        filter(loan_outcome %in% c(0 , 1))
+
+Our new dataset contains of 244179 rows.
+
+Let’s observe how useful these variables would be for credit risk modelling. It is known that the better the grade the lowest the interest rate. We can nicely visualise this with boxplots.
+
+ggplot(loan2 , aes(x = grade , y = int_rate , fill = grade)) + 
+        geom_boxplot() + 
+        theme_igray() + 
+        labs(y = 'Interest Rate' , x = 'Grade')
+
+We assume that grade is a great predictor for the volume of non-performing loans. But how many of them did not performed grouped by grade?
+
+table(loan2$grade , factor(loan2$loan_outcome , c(0 , 1) , c('Fully Paid' , 'Default')))
+
+##    
+##     Fully Paid Default
+##   A      38268    2472
+##   B      64185    9095
+##   C      50823   12252
+##   D      28874   10202
+##   E      12473    6162
+##   F       4581    2890
+##   G       1110     792
+
+ggplot(loan2 , aes(x = grade , y = ..count.. , fill = factor(loan_outcome , c(1 , 0) , c('Default' , 'Fully Paid')))) + 
+        geom_bar() + 
+        theme(legend.title = element_blank())
+
+Now let’s try to find out what impact the annual income of the borrower has on the other variables.
+
+ggplot(loan2[sample(244179 , 10000) , ] , aes(x = annual_inc , y = loan_amnt , color = int_rate)) +
+        geom_point(alpha = 0.5 , size = 1.5) + 
+        geom_smooth(se = F , color = 'darkred' , method = 'loess') +
+        xlim(c(0 , 300000)) + 
+        labs(x = 'Annual Income' , y = 'Loan Ammount' , color = 'Interest Rate')
+
+As expected the larger the annual income the larger the demanded ammount by the borrower.
+Data modelling
+
+Modelling Process:
+
+    We created the binary loan_outcome which will be our response variable.
+    We exclude some independent variables in order to make the model simpler.
+    We split the dataset to training set(75%) and testing set(25%) for the validation.
+    We train a model to predict the probability of default.
+
+Because of the binary response variable we can use logistic regression. Rather than modelling the response Y directly, logistic regression models the probability that Y belongs to a particular category, in our case the probability of a non-performing loan. This probability can be computed by the logistic function,
+
+P = exp(b0 + b1X1 + … + bNXN) / [ 1 + exp(b0 + b1X1 + … + bNXN) ]
+
+where
+
+    P is the probability of default
+    b0 , b1 , … , bN are the coefficient estimates
+    N the number of observations
+    X1 , … , XN are the independent variables
+
+# Split dataset 
+loan2$loan_outcome = as.numeric(loan2$loan_outcome)
+idx = sample(dim(loan2)[1] , 0.75*dim(loan2)[1] , replace = F)
+trainset = loan2[idx , ]
+testset = loan2[-idx , ]
+
+# Fit logistic regression
+glm.model = glm(loan_outcome ~ . , trainset , family = binomial(link = 'logit'))
+summary(glm.model)
+
+## 
+## Call:
+## glm(formula = loan_outcome ~ ., family = binomial(link = "logit"), 
+##     data = trainset)
+## 
+## Deviance Residuals: 
+##     Min       1Q   Median       3Q      Max  
+## -1.4008  -0.6693  -0.5173  -0.3400   8.4904  
+## 
+## Coefficients:
+##                       Estimate Std. Error z value Pr(>|z|)    
+## (Intercept)         -3.478e+00  4.987e-02 -69.752  < 2e-16 ***
+## loan_amnt            1.413e-05  9.694e-07  14.576  < 2e-16 ***
+## int_rate             1.362e-01  4.693e-03  29.017  < 2e-16 ***
+## gradeB               1.402e-01  3.327e-02   4.213 2.52e-05 ***
+## gradeC               1.611e-01  4.282e-02   3.762 0.000169 ***
+## gradeD               1.178e-01  5.466e-02   2.155 0.031159 *  
+## gradeE              -2.819e-02  6.770e-02  -0.416 0.677082    
+## gradeF              -2.548e-01  8.360e-02  -3.048 0.002303 ** 
+## gradeG              -3.342e-01  1.020e-01  -3.276 0.001053 ** 
+## emp_length1 year    -7.567e-02  3.199e-02  -2.366 0.018000 *  
+## emp_length10+ years -8.850e-02  2.439e-02  -3.629 0.000284 ***
+## emp_length2 years   -9.606e-02  2.942e-02  -3.265 0.001095 ** 
+## emp_length3 years   -6.216e-02  3.043e-02  -2.043 0.041061 *  
+## emp_length4 years   -7.339e-02  3.249e-02  -2.259 0.023888 *  
+## emp_length5 years   -3.031e-02  3.124e-02  -0.970 0.331941    
+## emp_length6 years   -1.353e-02  3.294e-02  -0.411 0.681278    
+## emp_length7 years   -6.067e-02  3.366e-02  -1.803 0.071440 .  
+## emp_length8 years   -2.980e-02  3.539e-02  -0.842 0.399682    
+## emp_length9 years   -1.592e-03  3.785e-02  -0.042 0.966458    
+## home_ownershipOTHER  4.291e-01  2.478e-01   1.732 0.083343 .  
+## home_ownershipOWN    6.730e-02  2.391e-02   2.815 0.004881 ** 
+## home_ownershipRENT   2.059e-01  1.404e-02  14.668  < 2e-16 ***
+## annual_inc          -6.441e-06  2.122e-07 -30.351  < 2e-16 ***
+## term60 months        3.242e-01  1.681e-02  19.284  < 2e-16 ***
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+## 
+## (Dispersion parameter for binomial family taken to be 1)
+## 
+##     Null deviance: 172580  on 183133  degrees of freedom
+## Residual deviance: 159710  on 183110  degrees of freedom
+## AIC: 159758
+## 
+## Number of Fisher Scoring iterations: 6
+
+The coefficients of the following features are positive:
+
+    Loan Ammount
+    Interest Rate
+    Home Ownership - Other
+    Term
+    The better the grade the more difficult to default
+
+This means the probability of defaulting on the given credit varies directly with these factors. For example more the given ammount of the loan, more the risk of losing credit.
+
+The coefficients of the following features are negative:
+
+    Annual Income
+    Home Ownership - Own
+    Home Ownership - Rent
+    Borrowers with 10+ years of experience are more likely to pay their debt
+    There is no significant difference in the early years of employment
+
+This means that the probability of defaulting is inversely proportional to the factors mentioned above.
+
+# Prediction on test set
+preds = predict(glm.model , testset , type = 'response')
+
+# Density of probabilities
+ggplot(data.frame(preds) , aes(preds)) + 
+        geom_density(fill = 'lightblue' , alpha = 0.4) +
+        labs(x = 'Predicted Probabilities on test set')
+
+But now let’s see how the accuracy, sensitivity and specificity are transformed for given threshold. We can use a threshold of 50% for the posterior probability of default in order to assign an observation to the default class. However, if we are concerned about incorrectly predicting the default status for individuals who default, then we can consider lowering this threshold. So we will consider these three metrics for threshold levels from 1% up to 50%.
+
+k = 0
+accuracy = c()
+sensitivity = c()
+specificity = c()
+for(i in seq(from = 0.01 , to = 0.5 , by = 0.01)){
+        k = k + 1
+        preds_binomial = ifelse(preds > i , 1 , 0)
+        confmat = table(testset$loan_outcome , preds_binomial)
+        accuracy[k] = sum(diag(confmat)) / sum(confmat)
+        sensitivity[k] = confmat[1 , 1] / sum(confmat[ , 1])
+        specificity[k] = confmat[2 , 2] / sum(confmat[ , 2])
+}
+
+If we plot our results we get this visualization.
+
+threshold = seq(from = 0.01 , to = 0.5 , by = 0.01)
+
+data = data.frame(threshold , accuracy , sensitivity , specificity)
+head(data)
+
+##   threshold  accuracy sensitivity specificity
+## 1      0.01 0.1799492   0.9402985   0.1791138
+## 2      0.02 0.1817348   0.9615385   0.1794029
+## 3      0.03 0.1862724   0.9606625   0.1800964
+## 4      0.04 0.1988697   0.9647779   0.1821256
+## 5      0.05 0.2252109   0.9647563   0.1865055
+## 6      0.06 0.2614956   0.9571610   0.1924878
+
+# Gather accuracy , sensitivity and specificity in one column
+ggplot(gather(data , key = 'Metric' , value = 'Value' , 2:4) , 
+       aes(x = threshold , y = Value , color = Metric)) + 
+        geom_line(size = 1.5)
+
+A threshold of 25% - 30% seems ideal cause further increase of the cut off percentage does not have significant impact on the accuracy of the model. The Confusion Matrix for cut off point at 30% will be this,
+
+preds.for.30 = ifelse(preds > 0.3 , 1 , 0)
+confusion_matrix_30 = table(Predicted = preds.for.30 , Actual = testset$loan_outcome)
+confusion_matrix_30
+
+##          Actual
+## Predicted     0     1
+##         0 44853  7834
+##         1  5266  3092
+
+## [1] "Accuracy : 0.7854"
+
+The ROC (Receiver Operating Characteristics) curve is a popular graphic for simultaneously displaying the two types of errors for all possible thresholds.
+
+library(pROC)
+
+# Area Under Curve
+auc(roc(testset$loan_outcome , preds))
+
+## Area under the curve: 0.6957
+
+# Plot ROC curve
+plot.roc(testset$loan_outcome , preds , main = "Confidence interval of a threshold" , percent = TRUE , 
+         ci = TRUE , of = "thresholds" , thresholds = "best" , print.thres = "best" , col = 'blue')
+
+Conclusion
+
+A logistic regression model was used to predict the loan status. Different cut off’s were used to decide if the loan should be granted or not. Cut off of 30% gave a good accuracy of 78.54%. The decision to set a cut off is arbitrary and higher levels of threshold increases the risk. The Area Under Curve also gives a measure of accuracy, which came out to be 69.57%.
